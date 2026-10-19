@@ -1,0 +1,6 @@
+{
+  "name": "Adv & Clerk Directory",
+  "description": "Comprehensive Advocate and Clerk directory with real-time search across names, codes, mobile numbers, and Panel Advocates, one-tap Call and WhatsApp actions, full CRUD management, and CSV export & direct update/import.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
