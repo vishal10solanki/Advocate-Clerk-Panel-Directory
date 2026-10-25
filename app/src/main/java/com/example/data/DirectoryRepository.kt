@@ -28,7 +28,7 @@ class DirectoryRepository(
     companion object {
         const val PREF_DATASET_CHECKSUM = "cached_seed_checksum"
         const val PREF_LAST_REFRESH_TIME = "last_refresh_timestamp"
-        const val DATASET_VERSION = "2026.10.17.1365"
+        const val DATASET_VERSION = "2026.10.23.1521"
     }
 
     /**
@@ -290,23 +290,33 @@ class DirectoryRepository(
             var colPanel = -1
             var colAdvMob1 = -1
             var colAdvMob2 = -1
-            var colClerkName = -1
-            var colClerkMob1 = -1
-            var colClerkMob2 = -1
+            var colClerk1Name = -1
+            var colClerk1Mob1 = -1
+            var colClerk1Mob2 = -1
+            var colClerk2Name = -1
+            var colClerk2Mob1 = -1
+            var colClerk2Mob2 = -1
 
             if (isHeader) {
                 headerParts.forEachIndexed { idx, h ->
                     when {
                         h.contains("panel") -> colPanel = idx
-                        h.contains("clerk") && (h.contains("mob") || h.contains("phone") || h.contains("contact")) -> {
-                            if (h.contains("sec") || h.contains("2") || h.contains("other") || h.contains("alt")) {
-                                colClerkMob2 = idx
+                        h.contains("clerk") && (h.contains("2") || idx >= 9) && (h.contains("mob") || h.contains("phone") || h.contains("contact")) -> {
+                            if (h.contains("sec") || h.contains("other") || h.contains("alt") || colClerk2Mob1 != -1) {
+                                colClerk2Mob2 = idx
                             } else {
-                                colClerkMob1 = idx
+                                colClerk2Mob1 = idx
                             }
                         }
-                        h.contains("clerk") -> colClerkName = idx
-                        // Check secondary mobile before primary mobile so advocate_mobile_secondary is not captured as primary
+                        h.contains("clerk") && (h.contains("mob") || h.contains("phone") || h.contains("contact")) -> {
+                            if (h.contains("sec") || h.contains("other") || h.contains("alt") || colClerk1Mob1 != -1) {
+                                colClerk1Mob2 = idx
+                            } else {
+                                colClerk1Mob1 = idx
+                            }
+                        }
+                        h.contains("clerk") && (h.contains("2") || idx >= 9) -> colClerk2Name = idx
+                        h.contains("clerk") -> if (colClerk1Name == -1) colClerk1Name = idx else if (colClerk2Name == -1) colClerk2Name = idx
                         (h.contains("sec") || h.contains("2") || h.contains("other") || h.contains("alt")) && 
                                 (h.contains("mob") || h.contains("phone") || h.contains("contact")) -> colAdvMob2 = idx
                         (h.contains("pri") || h.contains("1") || h.contains("adv")) && 
@@ -326,19 +336,29 @@ class DirectoryRepository(
             val sampleParts = parseCsvLine(dataLines.firstOrNull() ?: "")
             if (colAdvName == -1) colAdvName = 1
             if (colAdvCode == -1) colAdvCode = 2
-            if (sampleParts.size >= 9 && sampleParts.getOrNull(3)?.contains("panel", ignoreCase = true) == true) {
+            if (sampleParts.size >= 12) {
                 if (colPanel == -1) colPanel = 3
                 if (colAdvMob1 == -1) colAdvMob1 = 4
                 if (colAdvMob2 == -1) colAdvMob2 = 5
-                if (colClerkName == -1) colClerkName = 6
-                if (colClerkMob1 == -1) colClerkMob1 = 7
-                if (colClerkMob2 == -1) colClerkMob2 = 8
+                if (colClerk1Name == -1) colClerk1Name = 6
+                if (colClerk1Mob1 == -1) colClerk1Mob1 = 7
+                if (colClerk1Mob2 == -1) colClerk1Mob2 = 8
+                if (colClerk2Name == -1) colClerk2Name = 9
+                if (colClerk2Mob1 == -1) colClerk2Mob1 = 10
+                if (colClerk2Mob2 == -1) colClerk2Mob2 = 11
+            } else if (sampleParts.size >= 9 && sampleParts.getOrNull(3)?.contains("panel", ignoreCase = true) == true) {
+                if (colPanel == -1) colPanel = 3
+                if (colAdvMob1 == -1) colAdvMob1 = 4
+                if (colAdvMob2 == -1) colAdvMob2 = 5
+                if (colClerk1Name == -1) colClerk1Name = 6
+                if (colClerk1Mob1 == -1) colClerk1Mob1 = 7
+                if (colClerk1Mob2 == -1) colClerk1Mob2 = 8
             } else {
                 if (colAdvMob1 == -1) colAdvMob1 = 3
                 if (colAdvMob2 == -1) colAdvMob2 = 4
-                if (colClerkName == -1) colClerkName = 5
-                if (colClerkMob1 == -1) colClerkMob1 = 6
-                if (colClerkMob2 == -1) colClerkMob2 = 7
+                if (colClerk1Name == -1) colClerk1Name = 5
+                if (colClerk1Mob1 == -1) colClerk1Mob1 = 6
+                if (colClerk1Mob2 == -1) colClerk1Mob2 = 7
                 if (colPanel == -1 && sampleParts.size >= 9) colPanel = 8
             }
             if (colSr == -1) colSr = 0
@@ -350,9 +370,12 @@ class DirectoryRepository(
                 val panel: String,
                 val advMob1: String,
                 val advMob2: String,
-                val clerkName: String,
-                val clerkMob1: String,
-                val clerkMob2: String
+                val clerk1Name: String,
+                val clerk1Mob1: String,
+                val clerk1Mob2: String,
+                val clerk2Name: String = "",
+                val clerk2Mob1: String = "",
+                val clerk2Mob2: String = ""
             )
 
             val parsedRows = mutableListOf<ParsedRow>()
@@ -370,9 +393,12 @@ class DirectoryRepository(
                 val panel = getCol(colPanel)
                 val advMob1 = getCol(colAdvMob1)
                 val advMob2 = getCol(colAdvMob2)
-                val clerkName = getCol(colClerkName)
-                val clerkMob1 = getCol(colClerkMob1)
-                val clerkMob2 = getCol(colClerkMob2)
+                val clerk1Name = getCol(colClerk1Name)
+                val clerk1Mob1 = getCol(colClerk1Mob1)
+                val clerk1Mob2 = getCol(colClerk1Mob2)
+                val clerk2Name = if (colClerk2Name != -1) getCol(colClerk2Name) else ""
+                val clerk2Mob1 = if (colClerk2Mob1 != -1) getCol(colClerk2Mob1) else ""
+                val clerk2Mob2 = if (colClerk2Mob2 != -1) getCol(colClerk2Mob2) else ""
 
                 parsedRows.add(
                     ParsedRow(
@@ -382,9 +408,12 @@ class DirectoryRepository(
                         panel = panel,
                         advMob1 = advMob1,
                         advMob2 = advMob2,
-                        clerkName = clerkName,
-                        clerkMob1 = clerkMob1,
-                        clerkMob2 = clerkMob2
+                        clerk1Name = clerk1Name,
+                        clerk1Mob1 = clerk1Mob1,
+                        clerk1Mob2 = clerk1Mob2,
+                        clerk2Name = clerk2Name,
+                        clerk2Mob1 = clerk2Mob1,
+                        clerk2Mob2 = clerk2Mob2
                     )
                 )
             }
@@ -398,22 +427,26 @@ class DirectoryRepository(
                 dao.clearClerks()
 
                 val clerkMap = mutableMapOf<String, ClerkEntity>()
-                for (row in parsedRows) {
-                    if (row.clerkName.isNotBlank()) {
-                        val key = row.clerkName.lowercase()
-                        val existing = clerkMap[key]
-                        if (existing == null) {
-                            clerkMap[key] = ClerkEntity(
-                                name = row.clerkName,
-                                primaryMobile = row.clerkMob1,
-                                secondaryMobile = row.clerkMob2
-                            )
-                        } else {
-                            val u1 = existing.primaryMobile.ifBlank { row.clerkMob1 }
-                            val u2 = existing.secondaryMobile.ifBlank { row.clerkMob2 }
-                            clerkMap[key] = existing.copy(primaryMobile = u1, secondaryMobile = u2)
-                        }
+                fun registerClerk(name: String, mob1: String, mob2: String) {
+                    if (name.isBlank()) return
+                    val key = name.lowercase()
+                    val existing = clerkMap[key]
+                    if (existing == null) {
+                        clerkMap[key] = ClerkEntity(
+                            name = name,
+                            primaryMobile = mob1,
+                            secondaryMobile = mob2
+                        )
+                    } else {
+                        val u1 = existing.primaryMobile.ifBlank { mob1 }
+                        val u2 = existing.secondaryMobile.ifBlank { mob2 }
+                        clerkMap[key] = existing.copy(primaryMobile = u1, secondaryMobile = u2)
                     }
+                }
+
+                for (row in parsedRows) {
+                    registerClerk(row.clerk1Name, row.clerk1Mob1, row.clerk1Mob2)
+                    registerClerk(row.clerk2Name, row.clerk2Mob1, row.clerk2Mob2)
                 }
 
                 val clerkList = clerkMap.values.toList()
@@ -425,14 +458,21 @@ class DirectoryRepository(
                 }
 
                 val advocatesToInsert = parsedRows.map { row ->
-                    val clerkId = if (row.clerkName.isNotBlank()) clerkIdMap[row.clerkName.lowercase()] else null
+                    val c1Id = if (row.clerk1Name.isNotBlank()) clerkIdMap[row.clerk1Name.lowercase()] else null
+                    val c2Id = if (row.clerk2Name.isNotBlank()) clerkIdMap[row.clerk2Name.lowercase()] else null
+                    val primaryClerkId = c1Id ?: c2Id
+                    val addlIds = mutableListOf<Long>()
+                    if (c1Id != null && c2Id != null && c2Id != c1Id) {
+                        addlIds.add(c2Id)
+                    }
                     AdvocateEntity(
                         name = row.advName,
                         code = row.advCode,
                         primaryMobile = row.advMob1,
                         secondaryMobile = row.advMob2,
                         panelAdvocate = row.panel,
-                        clerkId = clerkId,
+                        clerkId = primaryClerkId,
+                        additionalClerkIds = addlIds.joinToString(","),
                         initialSrNo = row.sr
                     )
                 }
@@ -450,33 +490,38 @@ class DirectoryRepository(
                 val clerkMapByName = existingClerks.associateBy { it.name.trim().lowercase() }.toMutableMap()
                 var newClerkCount = 0
 
-                for (row in parsedRows) {
-                    if (row.clerkName.isNotBlank()) {
-                        val key = row.clerkName.trim().lowercase()
-                        val existing = clerkMapByName[key]
-                        if (existing == null) {
-                            val newClerk = ClerkEntity(
-                                name = row.clerkName.trim(),
-                                primaryMobile = row.clerkMob1.trim(),
-                                secondaryMobile = row.clerkMob2.trim()
+                suspend fun registerOrUpdateClerk(name: String, mob1: String, mob2: String): Long? {
+                    if (name.isBlank()) return null
+                    val key = name.trim().lowercase()
+                    val existing = clerkMapByName[key]
+                    return if (existing == null) {
+                        val newClerk = ClerkEntity(
+                            name = name.trim(),
+                            primaryMobile = mob1.trim(),
+                            secondaryMobile = mob2.trim()
+                        )
+                        val newId = dao.insertClerk(newClerk)
+                        clerkMapByName[key] = newClerk.copy(id = newId)
+                        newClerkCount++
+                        newId
+                    } else {
+                        val needsMob1Update = existing.primaryMobile.isBlank() && mob1.isNotBlank()
+                        val needsMob2Update = existing.secondaryMobile.isBlank() && mob2.isNotBlank()
+                        if (needsMob1Update || needsMob2Update) {
+                            val updated = existing.copy(
+                                primaryMobile = if (needsMob1Update) mob1.trim() else existing.primaryMobile,
+                                secondaryMobile = if (needsMob2Update) mob2.trim() else existing.secondaryMobile
                             )
-                            val newId = dao.insertClerk(newClerk)
-                            val insertedClerk = newClerk.copy(id = newId)
-                            clerkMapByName[key] = insertedClerk
-                            newClerkCount++
-                        } else {
-                            val needsMob1Update = existing.primaryMobile.isBlank() && row.clerkMob1.isNotBlank()
-                            val needsMob2Update = existing.secondaryMobile.isBlank() && row.clerkMob2.isNotBlank()
-                            if (needsMob1Update || needsMob2Update) {
-                                val updated = existing.copy(
-                                    primaryMobile = if (needsMob1Update) row.clerkMob1.trim() else existing.primaryMobile,
-                                    secondaryMobile = if (needsMob2Update) row.clerkMob2.trim() else existing.secondaryMobile
-                                )
-                                dao.updateClerk(updated)
-                                clerkMapByName[key] = updated
-                            }
+                            dao.updateClerk(updated)
+                            clerkMapByName[key] = updated
                         }
+                        existing.id
                     }
+                }
+
+                for (row in parsedRows) {
+                    registerOrUpdateClerk(row.clerk1Name, row.clerk1Mob1, row.clerk1Mob2)
+                    registerOrUpdateClerk(row.clerk2Name, row.clerk2Mob1, row.clerk2Mob2)
                 }
 
                 val existingAdvocates = dao.getAllAdvocatesSnapshot()
@@ -493,9 +538,13 @@ class DirectoryRepository(
                     val matchedExisting = (if (codeKey.isNotEmpty()) advocatesByCode[codeKey] else null)
                         ?: advocatesByName[nameKey]
 
-                    val clerkId = if (row.clerkName.isNotBlank()) {
-                        clerkMapByName[row.clerkName.trim().lowercase()]?.id
-                    } else null
+                    val c1Id = if (row.clerk1Name.isNotBlank()) clerkMapByName[row.clerk1Name.trim().lowercase()]?.id else null
+                    val c2Id = if (row.clerk2Name.isNotBlank()) clerkMapByName[row.clerk2Name.trim().lowercase()]?.id else null
+                    val primaryClerkId = c1Id ?: c2Id
+                    val addlIds = mutableListOf<Long>()
+                    if (c1Id != null && c2Id != null && c2Id != c1Id) {
+                        addlIds.add(c2Id)
+                    }
 
                     if (matchedExisting != null) {
                         val updated = matchedExisting.copy(
@@ -504,7 +553,8 @@ class DirectoryRepository(
                             primaryMobile = if (row.advMob1.isNotBlank()) row.advMob1.trim() else matchedExisting.primaryMobile,
                             secondaryMobile = if (row.advMob2.isNotBlank()) row.advMob2.trim() else matchedExisting.secondaryMobile,
                             panelAdvocate = if (row.panel.isNotBlank()) row.panel.trim() else matchedExisting.panelAdvocate,
-                            clerkId = clerkId ?: matchedExisting.clerkId
+                            clerkId = primaryClerkId ?: matchedExisting.clerkId,
+                            additionalClerkIds = if (addlIds.isNotEmpty()) addlIds.joinToString(",") else matchedExisting.additionalClerkIds
                         )
                         dao.updateAdvocate(updated)
                         if (updated.code.isNotBlank()) {
@@ -519,7 +569,8 @@ class DirectoryRepository(
                             primaryMobile = row.advMob1.trim(),
                             secondaryMobile = row.advMob2.trim(),
                             panelAdvocate = row.panel.trim(),
-                            clerkId = clerkId,
+                            clerkId = primaryClerkId,
+                            additionalClerkIds = addlIds.joinToString(","),
                             initialSrNo = row.sr
                         )
                         val newId = dao.insertAdvocate(newAdv)

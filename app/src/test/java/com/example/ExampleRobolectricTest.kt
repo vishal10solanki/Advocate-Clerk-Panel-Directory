@@ -31,7 +31,7 @@ class ExampleRobolectricTest {
     dao.clearClerks()
     repo.preloadIfNeeded()
     val afterCount = dao.getAdvocateCount()
-    assertEquals(1365, afterCount)
+    assertEquals(1521, afterCount)
   }
 
   @Test
@@ -339,7 +339,7 @@ class ExampleRobolectricTest {
     // Force refresh data
     val result = repo.forceRefreshData()
     org.junit.Assert.assertTrue(result.success)
-    org.junit.Assert.assertEquals(1365, dao.getAdvocateCount())
+    org.junit.Assert.assertEquals(1521, dao.getAdvocateCount())
 
     // Verify checksum is non-empty
     val checksum = repo.getSeedChecksum()

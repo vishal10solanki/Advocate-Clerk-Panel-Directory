@@ -1110,7 +1110,7 @@ html_content = f'''<!DOCTYPE html>
           <h1>Adv & Clerk Directory</h1>
           <p>
             <span>Gujarat High Court</span>
-            <span class="badge-records" id="badgeTotalRecords">1,365 Records</span>
+            <span class="badge-records" id="badgeTotalRecords">1,438 Records</span>
           </p>
         </div>
       </div>
@@ -1150,7 +1150,7 @@ html_content = f'''<!DOCTYPE html>
 
     <!-- HORIZONTAL SCROLLING QUICK FILTERS -->
     <div class="filter-chips-scroll" id="advFilterChipsRow">
-      <div class="filter-pill active" data-filter="all">All (1,365)</div>
+      <div class="filter-pill active" data-filter="all">All (1,438)</div>
       <div class="filter-pill" data-filter="panel">⚖️ Panel Advocates</div>
       <div class="filter-pill" data-filter="has-clerk">👨‍💼 Has Clerk</div>
       <div class="filter-pill" data-filter="multi-clerk">👥 Multiple Clerks</div>
@@ -1219,7 +1219,7 @@ html_content = f'''<!DOCTYPE html>
               Choose CSV File to Import
             </button>
             <button class="btn-modal-cancel" id="btnResetDefaultSeedAdmin" style="color: var(--danger);">
-              Reset to Default (1,365 Records)
+              Reset to Default (1,438 Records)
             </button>
           </div>
         </div>
@@ -1408,7 +1408,7 @@ html_content = f'''<!DOCTYPE html>
     const SEED_DATA = {seed_json};
 
     // 2. CONSTANTS & KEYS
-    const KEY_DATA = "adv_clerk_pwa_data_v7_1365";
+    const KEY_DATA = "adv_clerk_pwa_data_v8_1438";
     const KEY_ADMIN = "adv_clerk_pwa_admin_active";
     const KEY_PIN = "adv_clerk_pwa_pin";
     const KEY_THEME = "adv_clerk_pwa_theme";
@@ -1706,11 +1706,11 @@ html_content = f'''<!DOCTYPE html>
       document.getElementById("btnExportJsonAdmin").addEventListener("click", exportDirectoryJson);
       document.getElementById("adminCsvFileInput").addEventListener("change", handleAdminCsvImport);
       document.getElementById("btnResetDefaultSeedAdmin").addEventListener("click", () => {{
-        if (confirm("Reset directory to default original 1,365 records? Any manual changes will be replaced.")) {{
+        if (confirm("Reset directory to default original 1,438 records? Any manual changes will be replaced.")) {{
           directory = JSON.parse(JSON.stringify(SEED_DATA));
           saveData();
           renderAllViews();
-          showToast("Directory restored to default 1,365 records");
+          showToast("Directory restored to default 1,438 records");
         }}
       }});
 
@@ -1766,8 +1766,9 @@ html_content = f'''<!DOCTYPE html>
     }}
 
     // Filter Logic
+    (Requirement #1: Exclude Mobile Numbers; Strictly search names, codes, panels for advocates, and names for clerks)
     function getFilteredAdvocates() {{
-      const q = searchQuery;
+      const q = searchQuery.trim().toLowerCase();
       return directory.advocates.filter(adv => {{
         if (activeFilter === "panel" && !adv.panel) return false;
         if (activeFilter === "has-clerk" && (!adv.clerkIds || adv.clerkIds.length === 0)) return false;
@@ -1776,285 +1777,22 @@ html_content = f'''<!DOCTYPE html>
 
         if (!q) return true;
 
+        // Strictly search advocate name, bar code, and empanelled bank/institution panel
         if (adv.name && adv.name.toLowerCase().includes(q)) return true;
         if (adv.code && adv.code.toLowerCase().includes(q)) return true;
         if (adv.panel && adv.panel.toLowerCase().includes(q)) return true;
 
-        if (adv.clerkIds && adv.clerkIds.length > 0) {{
-          for (let cid of adv.clerkIds) {{
-            const clerk = directory.clerks.find(c => c.id === cid);
-            if (clerk) {{
-              if (clerk.name && clerk.name.toLowerCase().includes(q)) return true;
-            }}
-          }}
-        }}
         return false;
       }});
     }}
 
     function getFilteredClerks() {{
-      const q = searchQuery;
+      const q = searchQuery.trim().toLowerCase();
       return directory.clerks.filter(clerk => {{
         if (!q) return true;
-        if (clerk.name && clerk.name.toLowerCase().includes(q)) return true;
-
-        const linked = directory.advocates.filter(a => a.clerkIds && a.clerkIds.includes(clerk.id));
-        for (let a of linked) {{
-          if (a.name && a.name.toLowerCase().includes(q)) return true;
-          if (a.code && a.code.toLowerCase().includes(q)) return true;
-        }}
-        return false;
+        // Strictly search clerk name
+        return !!(clerk.name && clerk.name.toLowerCase().includes(q));
       }});
-    }}
-
-    // Render Advocates List (with Panel Advocate Highlighting!)
-    function renderAdvocates() {{
-      const container = document.getElementById("advocatesCardsGrid");
-      const list = getFilteredAdvocates();
-      const countNotice = document.getElementById("resultsCountNotice");
-      const loadMoreBtn = document.getElementById("advLoadMoreBtn");
-
-      countNotice.textContent = "Showing " + Math.min(advVisibleCount, list.length).toLocaleString() + " of " + list.length.toLocaleString() + " Advocates";
-      loadMoreBtn.style.display = advVisibleCount < list.length ? "inline-flex" : "none";
-
-      const visibleSlice = list.slice(0, advVisibleCount);
-
-      if (visibleSlice.length === 0) {{
-        container.innerHTML = `
-          <div style="grid-column: 1/-1; text-align: center; padding: 48px 16px; color: var(--text-tertiary);">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 12px; opacity: 0.6;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-            <p style="font-size: 1.05rem; font-weight: 700; color: var(--text-secondary);">No matching advocates found</p>
-            <p style="font-size: 0.85rem; margin-top: 4px;">Check your search keyword or tap 'All' to clear filters.</p>
-          </div>
-        `;
-        return;
-      }}
-
-      let html = "";
-      for (let adv of visibleSlice) {{
-        const isPanel = adv.panel && adv.panel.trim().length > 0;
-
-        // Clerks mapping
-        const clerkObjs = (adv.clerkIds || []).map(cid => directory.clerks.find(c => c.id === cid)).filter(Boolean);
-        let clerksHtml = "";
-
-        if (clerkObjs.length === 0) {{
-          clerksHtml = '<div style="font-size: 0.78rem; color: var(--text-tertiary); font-style: italic; padding: 2px 0;">No clerk assigned</div>';
-        }} else {{
-          clerksHtml = clerkObjs.map((clerk, idx) => {{
-            const hasMultiple = clerkObjs.length > 1;
-            const tag = hasMultiple ? '<span class="clerk-tag-pill">Clerk #' + (idx + 1) + '</span>' : "";
-            
-            let phoneRows = "";
-            if (clerk.primaryMobile) phoneRows += renderDirectActionRow(clerk.primaryMobile, "Primary");
-            if (clerk.secondaryMobile) phoneRows += renderDirectActionRow(clerk.secondaryMobile, "Secondary");
-            if (!clerk.primaryMobile && !clerk.secondaryMobile) {{
-              phoneRows = '<div style="font-size: 0.75rem; color: var(--text-tertiary);">No phone recorded</div>';
-            }}
-
-            return `
-              <div class="clerk-item-card">
-                <div class="clerk-name-title">
-                  <span>${{escapeHtml(clerk.name)}}</span>
-                  ${{tag}}
-                </div>
-                ${{phoneRows}}
-              </div>
-            `;
-          }}).join("");
-        }}
-
-        // 3. PANEL ADVOCATE HIGHLIGHTING (Requirement #3)
-        let panelBadges = "";
-        if (isPanel) {{
-          const panels = adv.panel.includes(";") ? adv.panel.split(";") : adv.panel.split(String.fromCharCode(10));
-          panelBadges = panels.map(p => p.trim()).filter(Boolean).map(p => `
-            <span class="chip-panel-badge" title="Panel Advocate">
-              <span>⚖️ Panel:</span>
-              <span>${{escapeHtml(p)}}</span>
-            </span>
-          `).join("");
-        }}
-
-        // Contact rows
-        let contactRows = "";
-        if (adv.primaryMobile) contactRows += renderDirectActionRow(adv.primaryMobile, "Primary");
-        if (adv.secondaryMobile) contactRows += renderDirectActionRow(adv.secondaryMobile, "Secondary");
-        if (!adv.primaryMobile && !adv.secondaryMobile) {{
-          contactRows = '<div style="font-size: 0.78rem; color: var(--text-tertiary); padding: 4px 0;">No phone recorded</div>';
-        }}
-
-        html += `
-          <div class="native-card ${{isPanel ? 'panel-highlighted' : ''}}">
-            <div class="card-top">
-              <div class="adv-title-group">
-                <div class="adv-full-name">${{escapeHtml(adv.name)}}</div>
-                <div class="chips-group">
-                  ${{adv.code ? `<span class="chip-code">Code: ${{escapeHtml(adv.code)}}</span>` : ""}}
-                  ${{adv.srNo ? `<span class="chip-sr">#${{adv.srNo}}</span>` : ""}}
-                  ${{panelBadges}}
-                </div>
-              </div>
-            </div>
-
-            <!-- Advocate Direct Contact Section -->
-            <div class="contact-container">
-              <div style="font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">
-                Advocate Contact
-              </div>
-              ${{contactRows}}
-            </div>
-
-            <!-- Assigned Clerks Section (Multiple Clerks Supported) -->
-            <div class="clerk-box-container">
-              <div class="clerk-box-head">
-                <span>👨‍💼 Assigned Clerk(s)</span>
-                ${{clerkObjs.length > 1 ? `<span style="background: #166534; color: #fff; padding: 1px 7px; border-radius: 99px; font-size: 0.65rem;">${{clerkObjs.length}} Clerks</span>` : ""}}
-              </div>
-              ${{clerksHtml}}
-            </div>
-
-            <!-- Card Bottom Actions -->
-            <div class="card-bottom-actions">
-              <button class="btn-share-contact" onclick="shareAdvocateCard(${{adv.id}})">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
-                <span>Share</span>
-              </button>
-
-              <div class="admin-card-tools ${{isAdmin ? 'unlocked' : ''}}">
-                <button class="btn-card-edit" onclick="openAdvocateModal(${{adv.id}})">Edit</button>
-                <button class="btn-card-del" onclick="deleteAdvocateRecord(${{adv.id}})">Delete</button>
-              </div>
-            </div>
-          </div>
-        `;
-      }}
-
-      container.innerHTML = html;
-    }}
-
-    // 4. WHATSAPP BUTTON WITH 'WhatsApp' TEXT (Requirement #4)
-    function renderDirectActionRow(phone, label) {{
-      const cleanDigits = phone.replace(/[^0-9]/g, "");
-      const waNumber = cleanDigits.length === 10 ? "91" + cleanDigits : cleanDigits;
-
-      return `
-        <div class="contact-row-item">
-          <div class="contact-number-info">
-            <span>${{escapeHtml(phone)}}</span>
-            <span class="contact-type-tag">(${{label}})</span>
-          </div>
-          <div class="quick-action-btns">
-            <!-- Direct WhatsApp Button (Text: 'WhatsApp') -->
-            <a href="https://wa.me/${{waNumber}}" target="_blank" rel="noopener" class="btn-action-whatsapp" title="WhatsApp">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.301-.15-1.78-.878-2.056-.978-.276-.101-.476-.15-.676.15-.2.301-.776.978-.951 1.178-.175.201-.351.226-.652.075-.301-.15-1.27-.468-2.42-1.493-.894-.797-1.498-1.782-1.674-2.083-.175-.301-.019-.464.132-.614.136-.135.301-.351.451-.527.151-.176.201-.301.301-.502.101-.2.051-.376-.025-.526-.075-.15-.677-1.631-.927-2.233-.244-.587-.492-.507-.676-.516h-.577c-.201 0-.527.075-.802.376s-1.053 1.028-1.053 2.507c0 1.479 1.078 2.908 1.229 3.109.15.2 2.122 3.24 5.141 4.543.718.31 1.279.495 1.716.634.721.229 1.377.197 1.895.12.577-.087 1.78-.727 2.031-1.429.251-.702.251-1.304.176-1.43-.075-.125-.276-.201-.577-.351z"/></svg>
-              <span>WhatsApp</span>
-            </a>
-            <!-- Direct Phone Call Button -->
-            <a href="tel:${{cleanDigits}}" class="btn-action-call" title="Call">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-              <span>Call</span>
-            </a>
-            <!-- Copy Number Button -->
-            <button class="btn-action-copy" onclick="copyTextToClipboard('${{escapeHtml(phone)}}')" title="Copy Number">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-            </button>
-          </div>
-        </div>
-      `;
-    }}
-
-    // Render Clerks List
-    function renderClerks() {{
-      const container = document.getElementById("clerksCardsGrid");
-      const list = getFilteredClerks();
-      const loadMoreBtn = document.getElementById("clerkLoadMoreBtn");
-
-      loadMoreBtn.style.display = clerkVisibleCount < list.length ? "inline-flex" : "none";
-      const visibleSlice = list.slice(0, clerkVisibleCount);
-
-      if (visibleSlice.length === 0) {{
-        container.innerHTML = `
-          <div style="grid-column: 1/-1; text-align: center; padding: 48px 16px; color: var(--text-tertiary);">
-            <p style="font-size: 1.05rem; font-weight: 700; color: var(--text-secondary);">No matching clerks found</p>
-          </div>
-        `;
-        return;
-      }}
-
-      let html = "";
-      for (let clerk of visibleSlice) {{
-        const linkedAdvs = directory.advocates.filter(a => a.clerkIds && a.clerkIds.includes(clerk.id));
-
-        let phoneRows = "";
-        if (clerk.primaryMobile) phoneRows += renderDirectActionRow(clerk.primaryMobile, "Primary");
-        if (clerk.secondaryMobile) phoneRows += renderDirectActionRow(clerk.secondaryMobile, "Secondary");
-        if (!clerk.primaryMobile && !clerk.secondaryMobile) {{
-          phoneRows = '<div style="font-size: 0.78rem; color: var(--text-tertiary);">No phone recorded</div>';
-        }}
-
-        const linkedListHtml = linkedAdvs.map(a => `
-          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; padding: 5px 8px; background: var(--surface); border-radius: var(--radius-sm); border: 1px solid var(--outline);">
-            <span style="font-weight: 700;">${{escapeHtml(a.name)}}</span>
-            <span style="color: var(--text-secondary); font-size: 0.75rem;">Code: ${{escapeHtml(a.code || '-')}}</span>
-          </div>
-        `).join("");
-
-        html += `
-          <div class="native-card">
-            <div class="card-top">
-              <div class="adv-title-group">
-                <div class="adv-full-name" style="color: #166534;">${{escapeHtml(clerk.name)}}</div>
-                <div class="chips-group">
-                  <span class="chip-code" style="background: #dcfce7; color: #15803d; border-color: #bbf7d0;">Clerk ID: ${{clerk.id}}</span>
-                  <span class="chip-sr">${{linkedAdvs.length}} Advocate${{linkedAdvs.length === 1 ? '' : 's'}}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="contact-container">
-              ${{phoneRows}}
-            </div>
-
-            <!-- Associated Advocates Accordion -->
-            <div>
-              <div onclick="toggleClerkAccordion(${{clerk.id}})" style="background: var(--surface-variant); border: 1px solid var(--outline); border-radius: var(--radius-md); padding: 8px 12px; font-size: 0.82rem; font-weight: 700; color: var(--primary); cursor: pointer; display: flex; align-items: center; justify-content: space-between;">
-                <span>Associated Advocates (${{linkedAdvs.length}})</span>
-                <span id="clerkArrow_${{clerk.id}}">▼</span>
-              </div>
-              <div id="clerkAdvBox_${{clerk.id}}" style="display: none; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; padding: 6px; background: var(--surface-variant); border-radius: var(--radius-md); margin-top: 4px;">
-                ${{linkedListHtml || '<div style="font-size: 0.8rem; color: var(--text-tertiary); padding: 4px;">No advocates linked</div>'}}
-              </div>
-            </div>
-
-            <div class="card-bottom-actions">
-              <button class="btn-share-contact" onclick="shareClerkCard(${{clerk.id}})">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
-                <span>Share</span>
-              </button>
-
-              <div class="admin-card-tools ${{isAdmin ? 'unlocked' : ''}}">
-                <button class="btn-card-edit" onclick="openClerkModal(${{clerk.id}})">Edit</button>
-                <button class="btn-card-del" onclick="deleteClerkRecord(${{clerk.id}})">Delete</button>
-              </div>
-            </div>
-          </div>
-        `;
-      }}
-
-      container.innerHTML = html;
-    }}
-
-    function toggleClerkAccordion(cid) {{
-      const box = document.getElementById("clerkAdvBox_" + cid);
-      const arr = document.getElementById("clerkArrow_" + cid);
-      if (box.style.display === "none") {{
-        box.style.display = "flex";
-        arr.textContent = "▲";
-      }} else {{
-        box.style.display = "none";
-        arr.textContent = "▼";
-      }}
     }}
 
     // Share Contact Card

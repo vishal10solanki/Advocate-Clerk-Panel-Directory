@@ -82,7 +82,8 @@ fun AdvocateCard(
     showClerkPhone: Boolean = true,
     showPanels: Boolean = true,
     isAdmin: Boolean = false,
-    allClerks: List<ClerkEntity> = emptyList()
+    allClerks: List<ClerkEntity> = emptyList(),
+    searchQuery: String = ""
 ) {
     val context = LocalContext.current
     val advocate = item.advocate
@@ -96,7 +97,15 @@ fun AdvocateCard(
             if (list.isEmpty() && clerk != null) listOf(clerk) else list
         }
     }
-    val panelList = remember(advocate.panelAdvocate) { advocate.getPanelList() }
+    val panelList = remember(advocate.panelAdvocate, searchQuery) {
+        val fullList = advocate.getPanelList()
+        if (searchQuery.isNotBlank()) {
+            val q = searchQuery.trim().lowercase()
+            fullList.filter { it.lowercase().contains(q) }
+        } else {
+            fullList
+        }
+    }
     val shareMessage = remember(advocate, assignedClerks) {
         DirectoryActions.buildAdvocateMultiClerkShareMessage(advocate, assignedClerks)
     }

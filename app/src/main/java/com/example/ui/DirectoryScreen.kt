@@ -675,7 +675,8 @@ fun DirectoryContent(
                                         showClerkPhone = showClerkPhoneOnAdvocateCard,
                                         showPanels = showPanelsOnCards,
                                         isAdmin = isAdmin,
-                                        allClerks = allClerks
+                                        allClerks = allClerks,
+                                        searchQuery = searchQuery
                                     )
                                 }
                             }

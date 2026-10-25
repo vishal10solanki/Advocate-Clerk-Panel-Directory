@@ -1,4 +1,4 @@
-const CACHE_NAME = 'adv-clerk-pwa-v7-1365';
+const CACHE_NAME = 'adv-clerk-pwa-v9-1521';
 const ASSETS_TO_CACHE = ['./', './index.html'];
 
 self.addEventListener('install', (event) => {
