@@ -31,7 +31,7 @@ class ExampleRobolectricTest {
     dao.clearClerks()
     repo.preloadIfNeeded()
     val afterCount = dao.getAdvocateCount()
-    assertEquals(1521, afterCount)
+    assertEquals(1638, afterCount)
   }
 
   @Test
@@ -339,7 +339,7 @@ class ExampleRobolectricTest {
     // Force refresh data
     val result = repo.forceRefreshData()
     org.junit.Assert.assertTrue(result.success)
-    org.junit.Assert.assertEquals(1521, dao.getAdvocateCount())
+    org.junit.Assert.assertEquals(1638, dao.getAdvocateCount())
 
     // Verify checksum is non-empty
     val checksum = repo.getSeedChecksum()
@@ -425,6 +425,155 @@ class ExampleRobolectricTest {
     org.junit.Assert.assertTrue(multiShareMsg.contains("CLERK ONE"))
     org.junit.Assert.assertTrue(multiShareMsg.contains("CLERK TWO"))
     org.junit.Assert.assertTrue(multiShareMsg.contains("CLERK THREE"))
+  }
+
+  @Test
+  fun `test pdf document catalog and valid pdf generation`() {
+    val clerk1 = com.example.model.ClerkEntity(id = 1, name = "PRADIPBHAI S SHUKLA", primaryMobile = "9825049155")
+    val clerk2 = com.example.model.ClerkEntity(id = 2, name = "RAMESH SOLANKI", primaryMobile = "9825000001")
+    val adv1 = com.example.model.AdvocateWithClerk(
+      advocate = com.example.model.AdvocateEntity(
+        id = 1,
+        name = "NITIN M AMIN",
+        code = "126",
+        primaryMobile = "9825049155",
+        panelAdvocate = "State Bank of India (SBI) Panel",
+        clerkId = 1,
+        additionalClerkIds = "2",
+        initialSrNo = 1
+      ),
+      clerk = clerk1
+    )
+    val adv2 = com.example.model.AdvocateWithClerk(
+      advocate = com.example.model.AdvocateEntity(
+        id = 2,
+        name = "B G PATEL",
+        code = "599",
+        initialSrNo = 2
+      ),
+      clerk = null
+    )
+    val clerksWithAdvs = listOf(
+      com.example.model.ClerkWithAdvocates(clerk = clerk1, advocates = listOf(adv1.advocate))
+    )
+
+    val catalog = com.example.data.PdfDirectoryGenerator.buildDocumentCatalog(
+      allAdvocates = listOf(adv1, adv2),
+      allClerks = listOf(clerk1, clerk2),
+      clerksWithAdvocates = clerksWithAdvs,
+      filteredAdvocates = listOf(adv1),
+      searchQuery = "SBI"
+    )
+
+    // Default catalog has 0 built-in PDFs
+    assertEquals(0, catalog.size)
+
+    val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+    com.example.data.DirectoryDocumentType.values().forEach { docType ->
+      val pdfBytes = com.example.data.PdfDirectoryGenerator.loadOrGeneratePdfBytes(
+        context = app,
+        type = docType,
+        allAdvocates = listOf(adv1, adv2),
+        allClerks = listOf(clerk1, clerk2),
+        clerksWithAdvocates = clerksWithAdvs,
+        filteredAdvocates = listOf(adv1),
+        searchQuery = "SBI"
+      )
+      org.junit.Assert.assertTrue("PDF bytes should not be empty for $docType", pdfBytes.isNotEmpty())
+      val header = String(pdfBytes.copyOfRange(0, minOf(8, pdfBytes.size)), Charsets.US_ASCII)
+      org.junit.Assert.assertTrue("PDF should start with %PDF- for $docType, got $header", header.startsWith("%PDF-"))
+    }
+  }
+
+  @Test
+  fun `test switching to documents tab in viewmodel`() {
+    val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val viewModel = com.example.ui.DirectoryViewModel(app)
+    viewModel.onTabSelected(com.example.ui.DirectoryTab.DOCUMENTS)
+    assertEquals(com.example.ui.DirectoryTab.DOCUMENTS, viewModel.selectedTab.value)
+  }
+
+  @Test
+  fun `test admin-only pdf add delete and restore defaults`() = kotlinx.coroutines.runBlocking {
+    val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+    // Reset any custom/hidden PDF state
+    app.getSharedPreferences("custom_pdfs_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+    java.io.File(app.filesDir, "custom_pdfs").deleteRecursively()
+
+    val viewModel = com.example.ui.DirectoryViewModel(app)
+    viewModel.exitAdminMode()
+
+    val samplePdfBytes = "%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF".toByteArray(Charsets.US_ASCII)
+
+    // Non-admin must NOT be able to open Add PDF dialog or save/delete PDFs
+    viewModel.openAddPdfDialog()
+    org.junit.Assert.assertFalse(viewModel.showAddPdfDialog.value)
+
+    viewModel.saveCustomPdf("Blocked Form", "Desc", "Court Forms", "blocked.pdf", samplePdfBytes)
+    org.junit.Assert.assertTrue(com.example.data.PdfDirectoryGenerator.loadCustomPdfs(app).isEmpty())
+
+    val dummyDoc = com.example.data.DirectoryPdfDocument(
+      type = com.example.data.DirectoryDocumentType.CUSTOM_PDF,
+      title = "Dummy",
+      description = "Desc",
+      category = "Custom",
+      fileName = "dummy.pdf",
+      recordCount = 1,
+      estimatedPages = 1,
+      id = "custom_dummy",
+      isCustom = true
+    )
+    viewModel.confirmDeletePdf(dummyDoc)
+    org.junit.Assert.assertNull(viewModel.deletePdfTarget.value)
+
+    // Authenticate as Admin
+    org.junit.Assert.assertTrue(viewModel.verifyAndEnableAdmin("HighCourt541"))
+    viewModel.openAddPdfDialog()
+    org.junit.Assert.assertTrue(viewModel.showAddPdfDialog.value)
+
+    // Admin adds custom PDF
+    val saved = com.example.data.PdfDirectoryGenerator.saveCustomPdf(
+      context = app,
+      title = "Vakalatnama Form",
+      description = "Official filing form",
+      category = "Court Forms",
+      fileName = "vakalatnama.pdf",
+      pdfBytes = samplePdfBytes
+    )
+    val customList = com.example.data.PdfDirectoryGenerator.loadCustomPdfs(app)
+    assertEquals(1, customList.size)
+    assertEquals("Vakalatnama Form", customList[0].title)
+
+    // Verify loadOrGeneratePdfBytes reads back exact uploaded PDF bytes
+    val loadedBytes = com.example.data.PdfDirectoryGenerator.loadOrGeneratePdfBytes(
+      context = app,
+      type = com.example.data.DirectoryDocumentType.CUSTOM_PDF,
+      allAdvocates = emptyList(),
+      allClerks = emptyList(),
+      clerksWithAdvocates = emptyList(),
+      filteredAdvocates = emptyList(),
+      searchQuery = "",
+      docId = saved.id
+    )
+    org.junit.Assert.assertArrayEquals(samplePdfBytes, loadedBytes)
+
+    // Verify catalog includes only the 1 custom PDF
+    val updatedCatalog = com.example.data.PdfDirectoryGenerator.buildDocumentCatalog(
+      allAdvocates = emptyList(),
+      allClerks = emptyList(),
+      clerksWithAdvocates = emptyList(),
+      filteredAdvocates = emptyList(),
+      searchQuery = "",
+      customPdfs = customList,
+      hiddenBuiltInIds = com.example.data.PdfDirectoryGenerator.getHiddenBuiltInIds(app)
+    )
+    assertEquals(1, updatedCatalog.size)
+    assertEquals(saved.id, updatedCatalog[0].id)
+    org.junit.Assert.assertTrue(updatedCatalog[0].isCustom)
+
+    // Admin deletes custom PDF
+    com.example.data.PdfDirectoryGenerator.deleteDocument(app, updatedCatalog[0])
+    org.junit.Assert.assertTrue(com.example.data.PdfDirectoryGenerator.loadCustomPdfs(app).isEmpty())
   }
 }
 

@@ -28,7 +28,7 @@ class DirectoryRepository(
     companion object {
         const val PREF_DATASET_CHECKSUM = "cached_seed_checksum"
         const val PREF_LAST_REFRESH_TIME = "last_refresh_timestamp"
-        const val DATASET_VERSION = "2026.10.23.1521"
+        const val DATASET_VERSION = "2026.10.25.1638"
     }
 
     /**

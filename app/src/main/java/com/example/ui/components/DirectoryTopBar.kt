@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -202,10 +203,10 @@ fun DirectoryTopBar(
             onValueChange = onSearchQueryChanged,
             placeholder = {
                 Text(
-                    if (selectedTab == DirectoryTab.ADVOCATES) {
-                        "Search advocate name, code, panel..."
-                    } else {
-                        "Search clerk name..."
+                    when (selectedTab) {
+                        DirectoryTab.ADVOCATES -> "Search advocate name, code, panel..."
+                        DirectoryTab.CLERKS -> "Search clerk name..."
+                        DirectoryTab.DOCUMENTS -> "Search PDF documents..."
                     }
                 )
             },
@@ -301,7 +302,7 @@ fun DirectoryTopBar(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Advocates ($advocateCount)")
+                        Text("Advocates ($advocateCount)", maxLines = 1)
                     }
                 },
                 modifier = Modifier.testTag("tab_advocates")
@@ -318,10 +319,27 @@ fun DirectoryTopBar(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Clerk View ($clerkCount)")
+                        Text("Clerks ($clerkCount)", maxLines = 1)
                     }
                 },
                 modifier = Modifier.testTag("tab_clerks")
+            )
+
+            Tab(
+                selected = selectedTab == DirectoryTab.DOCUMENTS,
+                onClick = { onTabSelected(DirectoryTab.DOCUMENTS) },
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.PictureAsPdf,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(stringResource(R.string.tab_pdf_docs), maxLines = 1)
+                    }
+                },
+                modifier = Modifier.testTag("tab_documents")
             )
         }
     }

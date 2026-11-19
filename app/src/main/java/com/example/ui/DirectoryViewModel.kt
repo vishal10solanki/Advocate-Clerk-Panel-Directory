@@ -7,24 +7,33 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
 import com.example.data.CsvImportResult
+import com.example.data.CustomPdfRecord
+import com.example.data.DirectoryPdfDocument
 import com.example.data.DirectoryRepository
+import com.example.data.DirectoryDocumentType
+import com.example.data.PdfDirectoryGenerator
+import com.example.data.PdfSaveResult
 import com.example.model.AdvocateEntity
 import com.example.model.AdvocateWithClerk
 import com.example.model.ClerkEntity
 import com.example.model.ClerkWithAdvocates
 import com.example.model.getAllClerkIds
 import com.example.model.getPanelList
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class DirectoryTab {
     ADVOCATES,
-    CLERKS
+    CLERKS,
+    DOCUMENTS
 }
 
 enum class ThemeMode {
@@ -89,6 +98,19 @@ class DirectoryViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _deleteClerkTarget = MutableStateFlow<ClerkEntity?>(null)
     val deleteClerkTarget: StateFlow<ClerkEntity?> = _deleteClerkTarget.asStateFlow()
+
+    // Admin PDF Document Management States
+    private val _customPdfs = MutableStateFlow(PdfDirectoryGenerator.loadCustomPdfs(application))
+    private val _hiddenBuiltInPdfIds = MutableStateFlow(PdfDirectoryGenerator.getHiddenBuiltInIds(application))
+    val hasHiddenBuiltInPdfs: StateFlow<Boolean> = _hiddenBuiltInPdfIds
+        .map { it.isNotEmpty() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), _hiddenBuiltInPdfIds.value.isNotEmpty())
+
+    private val _showAddPdfDialog = MutableStateFlow(false)
+    val showAddPdfDialog: StateFlow<Boolean> = _showAddPdfDialog.asStateFlow()
+
+    private val _deletePdfTarget = MutableStateFlow<DirectoryPdfDocument?>(null)
+    val deletePdfTarget: StateFlow<DirectoryPdfDocument?> = _deletePdfTarget.asStateFlow()
 
     // Settings States
     private val _themeMode = MutableStateFlow(ThemeMode.SYSTEM)
@@ -263,6 +285,53 @@ class DirectoryViewModel(application: Application) : AndroidViewModel(applicatio
         SharingStarted.WhileSubscribed(5000),
         emptyList()
     )
+
+    val allClerksWithAdvocates: StateFlow<List<ClerkWithAdvocates>> = repository.clerksWithAdvocates.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        emptyList()
+    )
+
+    private val directoryPdfBase = combine(
+        allAdvocatesRaw,
+        allClerks,
+        allClerksWithAdvocates
+    ) { allAdvs, clerks, clerksWithAdvs ->
+        Triple(allAdvs, clerks, clerksWithAdvs)
+    }
+
+    private val pdfAdminOverrides = combine(
+        _customPdfs,
+        _hiddenBuiltInPdfIds
+    ) { customList, hiddenIds ->
+        customList to hiddenIds
+    }
+
+    val pdfDocuments: StateFlow<List<DirectoryPdfDocument>> = combine(
+        directoryPdfBase,
+        filteredAdvocates,
+        _searchQuery,
+        pdfAdminOverrides
+    ) { base, filteredAdvs, query, overrides ->
+        val (allAdvs, clerks, clerksWithAdvs) = base
+        val (customList, hiddenIds) = overrides
+        PdfDirectoryGenerator.buildDocumentCatalog(
+            allAdvocates = allAdvs,
+            allClerks = clerks,
+            clerksWithAdvocates = clerksWithAdvs,
+            filteredAdvocates = filteredAdvs,
+            searchQuery = query,
+            customPdfs = customList,
+            hiddenBuiltInIds = hiddenIds
+        )
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        emptyList()
+    )
+
+    private val _generatingDocId = MutableStateFlow<String?>(null)
+    val generatingDocId: StateFlow<String?> = _generatingDocId.asStateFlow()
 
     fun onSearchQueryChanged(query: String) {
         _searchQuery.value = query
@@ -566,6 +635,160 @@ class DirectoryViewModel(application: Application) : AndroidViewModel(applicatio
                 _userMessage.value = "Directory CSV exported successfully"
             } catch (e: Exception) {
                 _userMessage.value = "Export failed: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    // Admin-Only PDF Document Management
+    fun openAddPdfDialog() {
+        if (!_isAdmin.value) {
+            _userMessage.value = "Admin role required to add PDF documents. Tap app logo on top 7 times."
+            return
+        }
+        _showAddPdfDialog.value = true
+    }
+
+    fun closeAddPdfDialog() {
+        _showAddPdfDialog.value = false
+    }
+
+    fun saveCustomPdf(
+        title: String,
+        description: String,
+        category: String,
+        fileName: String,
+        pdfBytes: ByteArray
+    ) {
+        if (!_isAdmin.value) {
+            _userMessage.value = "Admin role required to add PDF documents."
+            return
+        }
+        if (title.isBlank() || pdfBytes.isEmpty()) {
+            _userMessage.value = "Valid PDF file and title are required."
+            return
+        }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                PdfDirectoryGenerator.saveCustomPdf(
+                    context = getApplication(),
+                    title = title,
+                    description = description,
+                    category = category,
+                    fileName = fileName,
+                    pdfBytes = pdfBytes
+                )
+            }
+            _customPdfs.value = PdfDirectoryGenerator.loadCustomPdfs(getApplication())
+            _showAddPdfDialog.value = false
+            _userMessage.value = "Added PDF: ${title.trim()}"
+        }
+    }
+
+    fun confirmDeletePdf(doc: DirectoryPdfDocument) {
+        if (!_isAdmin.value) {
+            _userMessage.value = "Admin role required to delete PDF documents. Tap app logo on top 7 times."
+            return
+        }
+        _deletePdfTarget.value = doc
+    }
+
+    fun dismissDeletePdf() {
+        _deletePdfTarget.value = null
+    }
+
+    fun executeDeletePdf() {
+        if (!_isAdmin.value) {
+            _userMessage.value = "Admin role required to delete PDF documents."
+            return
+        }
+        val target = _deletePdfTarget.value ?: return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                PdfDirectoryGenerator.deleteDocument(getApplication(), target)
+            }
+            _customPdfs.value = PdfDirectoryGenerator.loadCustomPdfs(getApplication())
+            _hiddenBuiltInPdfIds.value = PdfDirectoryGenerator.getHiddenBuiltInIds(getApplication())
+            _deletePdfTarget.value = null
+            _userMessage.value = "Deleted PDF '${target.title}'"
+        }
+    }
+
+    fun restoreDefaultPdfs() {
+        if (!_isAdmin.value) {
+            _userMessage.value = "Admin role required to restore default PDFs."
+            return
+        }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                PdfDirectoryGenerator.restoreDefaultPdfs(getApplication())
+            }
+            _hiddenBuiltInPdfIds.value = PdfDirectoryGenerator.getHiddenBuiltInIds(getApplication())
+            _userMessage.value = "Restored built-in PDF documents"
+        }
+    }
+
+    // PDF Document Download / Open / Share
+    fun downloadPdfDocument(
+        doc: DirectoryPdfDocument,
+        onSaved: (PdfSaveResult) -> Unit
+    ) {
+        if (_generatingDocId.value != null) return
+        viewModelScope.launch {
+            _generatingDocId.value = doc.id
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    val bytes = PdfDirectoryGenerator.loadOrGeneratePdfBytes(
+                        context = getApplication(),
+                        type = doc.type,
+                        allAdvocates = allAdvocatesRaw.value,
+                        allClerks = allClerks.value,
+                        clerksWithAdvocates = allClerksWithAdvocates.value,
+                        filteredAdvocates = filteredAdvocates.value,
+                        searchQuery = _searchQuery.value,
+                        docId = doc.id
+                    )
+                    PdfDirectoryGenerator.savePdfToDownloads(getApplication(), doc.fileName, bytes)
+                }
+                _userMessage.value = if (result.savedToPublicDownloads) {
+                    "Downloaded to ${result.displayLocation}"
+                } else {
+                    "PDF ready: ${doc.fileName}"
+                }
+                onSaved(result)
+            } catch (e: Exception) {
+                _userMessage.value = "PDF download failed: ${e.localizedMessage ?: "Unknown error"}"
+            } finally {
+                _generatingDocId.value = null
+            }
+        }
+    }
+
+    fun preparePdfForAction(
+        doc: DirectoryPdfDocument,
+        onReady: (Uri) -> Unit
+    ) {
+        if (_generatingDocId.value != null) return
+        viewModelScope.launch {
+            _generatingDocId.value = doc.id
+            try {
+                val uri = withContext(Dispatchers.IO) {
+                    val bytes = PdfDirectoryGenerator.loadOrGeneratePdfBytes(
+                        context = getApplication(),
+                        type = doc.type,
+                        allAdvocates = allAdvocatesRaw.value,
+                        allClerks = allClerks.value,
+                        clerksWithAdvocates = allClerksWithAdvocates.value,
+                        filteredAdvocates = filteredAdvocates.value,
+                        searchQuery = _searchQuery.value,
+                        docId = doc.id
+                    )
+                    PdfDirectoryGenerator.createShareablePdfUri(getApplication(), doc.fileName, bytes)
+                }
+                onReady(uri)
+            } catch (e: Exception) {
+                _userMessage.value = "Could not prepare PDF: ${e.localizedMessage ?: "Unknown error"}"
+            } finally {
+                _generatingDocId.value = null
             }
         }
     }

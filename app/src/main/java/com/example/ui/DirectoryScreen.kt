@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PersonSearch
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
@@ -51,6 +53,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
@@ -71,6 +74,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.data.DirectoryDocumentType
+import com.example.data.DirectoryPdfDocument
 import com.example.model.AdvocateEntity
 import com.example.model.AdvocateWithClerk
 import com.example.model.ClerkEntity
@@ -78,6 +83,8 @@ import com.example.model.ClerkWithAdvocates
 import com.example.ui.components.AdvocateCard
 import com.example.ui.components.ClerkCard
 import com.example.ui.components.DirectoryTopBar
+import com.example.ui.components.PdfDocumentsSection
+import com.example.ui.dialogs.AddPdfDialog
 import com.example.ui.dialogs.AdminAuthDialog
 import com.example.ui.dialogs.AdvocateEditDialog
 import com.example.ui.dialogs.AssignAdvocateDialog
@@ -109,6 +116,11 @@ fun DirectoryScreen(
     val filteredClerks by viewModel.filteredClerks.collectAsState()
     val allAdvocatesRaw by viewModel.allAdvocatesRaw.collectAsState()
     val allClerks by viewModel.allClerks.collectAsState()
+    val pdfDocuments by viewModel.pdfDocuments.collectAsState()
+    val generatingDocId by viewModel.generatingDocId.collectAsState()
+    val hasHiddenBuiltInPdfs by viewModel.hasHiddenBuiltInPdfs.collectAsState()
+    val showAddPdfDialog by viewModel.showAddPdfDialog.collectAsState()
+    val deletePdfTarget by viewModel.deletePdfTarget.collectAsState()
 
     // Settings States
     val themeMode by viewModel.themeMode.collectAsState()
@@ -308,6 +320,20 @@ fun DirectoryScreen(
                             .testTag("drawer_item_clerks")
                     )
 
+                    // 5. PDF Documents Section
+                    NavigationDrawerItem(
+                        label = { Text(stringResource(R.string.drawer_pdf_docs) + " (${pdfDocuments.size})") },
+                        icon = { Icon(Icons.Default.PictureAsPdf, contentDescription = null) },
+                        selected = selectedTab == DirectoryTab.DOCUMENTS,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            viewModel.onTabSelected(DirectoryTab.DOCUMENTS)
+                        },
+                        modifier = Modifier
+                            .padding(NavigationDrawerItemDefaults.ItemPadding)
+                            .testTag("drawer_item_documents")
+                    )
+
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                         modifier = Modifier.padding(vertical = 8.dp, horizontal = 16.dp)
@@ -388,6 +414,12 @@ fun DirectoryScreen(
                 }
             }
         ) {
+            if (selectedTab != DirectoryTab.ADVOCATES) {
+                BackHandler {
+                    viewModel.onTabSelected(DirectoryTab.ADVOCATES)
+                }
+            }
+
             DirectoryContent(
                 searchQuery = searchQuery,
                 onSearchQueryChanged = viewModel::onSearchQueryChanged,
@@ -396,6 +428,11 @@ fun DirectoryScreen(
                 isLoading = isLoading,
                 filteredAdvocates = filteredAdvocates,
                 filteredClerks = filteredClerks,
+                pdfDocuments = pdfDocuments,
+                generatingDocId = generatingDocId,
+                hasHiddenBuiltInPdfs = hasHiddenBuiltInPdfs,
+                totalAdvocatesCount = allAdvocatesRaw.size,
+                totalClerksCount = allClerks.size,
                 isCompactView = isCompactView,
                 showClerkPhoneOnAdvocateCard = showClerkPhoneOnAdvocateCard,
                 showPanelsOnCards = showPanelsOnCards,
@@ -411,10 +448,10 @@ fun DirectoryScreen(
                 onRefreshData = { viewModel.forceRefreshData() },
                 onOpenAdminAuth = { viewModel.openAdminAuthDialog() },
                 onAddEntry = {
-                    if (selectedTab == DirectoryTab.ADVOCATES) {
-                        viewModel.openAddAdvocateDialog()
-                    } else {
-                        viewModel.openAddClerkDialog()
+                    when (selectedTab) {
+                        DirectoryTab.ADVOCATES -> viewModel.openAddAdvocateDialog()
+                        DirectoryTab.CLERKS -> viewModel.openAddClerkDialog()
+                        DirectoryTab.DOCUMENTS -> viewModel.openAddPdfDialog()
                     }
                 },
                 onEditAdvocate = { viewModel.openEditAdvocateDialog(it) },
@@ -427,6 +464,37 @@ fun DirectoryScreen(
                     val adv = allAdvocatesRaw.firstOrNull { it.advocate.id == advId }
                     if (adv != null) viewModel.openEditAdvocateDialog(adv)
                 },
+                onDownloadPdf = { doc ->
+                    viewModel.downloadPdfDocument(doc) { result ->
+                        if (result.savedToPublicDownloads) {
+                            coroutineScope.launch {
+                                val action = snackbarHostState.showSnackbar(
+                                    message = "Saved ${doc.fileName} to Downloads",
+                                    actionLabel = "Open",
+                                    duration = SnackbarDuration.Long
+                                )
+                                if (action == SnackbarResult.ActionPerformed) {
+                                    DirectoryActions.openPdfUri(context, result.uri, doc.title)
+                                }
+                            }
+                        } else {
+                            DirectoryActions.openPdfUri(context, result.uri, doc.title)
+                        }
+                    }
+                },
+                onOpenPdf = { doc ->
+                    viewModel.preparePdfForAction(doc) { uri ->
+                        DirectoryActions.openPdfUri(context, uri, doc.title)
+                    }
+                },
+                onSharePdf = { doc ->
+                    viewModel.preparePdfForAction(doc) { uri ->
+                        DirectoryActions.sharePdfUri(context, uri, doc.title)
+                    }
+                },
+                onAddPdfClick = { viewModel.openAddPdfDialog() },
+                onDeletePdf = { doc -> viewModel.confirmDeletePdf(doc) },
+                onRestoreDefaultPdfs = { viewModel.restoreDefaultPdfs() },
                 allClerks = allClerks,
                 isAdmin = isAdmin,
                 onLogoClick = { viewModel.onAppLogoClicked() },
@@ -550,6 +618,30 @@ fun DirectoryScreen(
             onDismiss = { viewModel.closeAdminAuthDialog() }
         )
     }
+
+    // Admin Add PDF Document Dialog
+    if (showAddPdfDialog && isAdmin) {
+        AddPdfDialog(
+            onSave = { title, description, category, fileName, pdfBytes ->
+                viewModel.saveCustomPdf(title, description, category, fileName, pdfBytes)
+            },
+            onDismiss = { viewModel.closeAddPdfDialog() }
+        )
+    }
+
+    // Admin Confirm Delete PDF Document Dialog
+    deletePdfTarget?.let { targetDoc ->
+        ConfirmDeleteDialog(
+            title = "Delete PDF Document",
+            message = if (targetDoc.isCustom) {
+                "Are you sure you want to permanently delete '${targetDoc.title}'?"
+            } else {
+                "Remove '${targetDoc.title}' from the PDF Docs list? You can restore built-in PDFs anytime from Admin controls."
+            },
+            onConfirm = { viewModel.executeDeletePdf() },
+            onDismiss = { viewModel.dismissDeletePdf() }
+        )
+    }
 }
 
 @Composable
@@ -561,6 +653,11 @@ fun DirectoryContent(
     isLoading: Boolean,
     filteredAdvocates: List<AdvocateWithClerk>,
     filteredClerks: List<ClerkWithAdvocates>,
+    pdfDocuments: List<DirectoryPdfDocument> = emptyList(),
+    generatingDocId: String? = null,
+    hasHiddenBuiltInPdfs: Boolean = false,
+    totalAdvocatesCount: Int = filteredAdvocates.size,
+    totalClerksCount: Int = filteredClerks.size,
     isCompactView: Boolean = false,
     showClerkPhoneOnAdvocateCard: Boolean = true,
     showPanelsOnCards: Boolean = true,
@@ -579,6 +676,12 @@ fun DirectoryContent(
     onDeleteClerk: (ClerkEntity) -> Unit,
     onAddAdvocateToClerk: (ClerkEntity) -> Unit,
     onEditAdvocateFromClerkView: (Long) -> Unit,
+    onDownloadPdf: (DirectoryPdfDocument) -> Unit = {},
+    onOpenPdf: (DirectoryPdfDocument) -> Unit = {},
+    onSharePdf: (DirectoryPdfDocument) -> Unit = {},
+    onAddPdfClick: () -> Unit = {},
+    onDeletePdf: (DirectoryPdfDocument) -> Unit = {},
+    onRestoreDefaultPdfs: () -> Unit = {},
     allClerks: List<ClerkEntity> = emptyList(),
     isAdmin: Boolean = false,
     onLogoClick: () -> Unit = {},
@@ -617,7 +720,11 @@ fun DirectoryContent(
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
                     text = {
                         Text(
-                            if (selectedTab == DirectoryTab.ADVOCATES) "Add Advocate" else "Add Clerk"
+                            when (selectedTab) {
+                                DirectoryTab.ADVOCATES -> "Add Advocate"
+                                DirectoryTab.CLERKS -> "Add Clerk"
+                                DirectoryTab.DOCUMENTS -> stringResource(R.string.pdf_add_button)
+                            }
                         )
                     },
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -712,6 +819,24 @@ fun DirectoryContent(
                                 }
                             }
                         }
+                    }
+
+                    DirectoryTab.DOCUMENTS -> {
+                        PdfDocumentsSection(
+                            documents = pdfDocuments,
+                            searchQuery = searchQuery,
+                            generatingDocId = generatingDocId,
+                            totalAdvocatesCount = totalAdvocatesCount,
+                            totalClerksCount = totalClerksCount,
+                            onDownloadPdf = onDownloadPdf,
+                            onOpenPdf = onOpenPdf,
+                            onSharePdf = onSharePdf,
+                            isAdmin = isAdmin,
+                            hasHiddenBuiltInPdfs = hasHiddenBuiltInPdfs,
+                            onAddPdfClick = onAddPdfClick,
+                            onDeletePdf = onDeletePdf,
+                            onRestoreDefaultPdfs = onRestoreDefaultPdfs
+                        )
                     }
                 }
             }

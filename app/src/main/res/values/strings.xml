@@ -1,3 +1,14 @@
 <resources>
     <string name="app_name">Adv &amp; Clerk Directory</string>
+    <string name="tab_pdf_docs">PDF Docs</string>
+    <string name="drawer_pdf_docs">PDF Documents</string>
+    <string name="pdf_docs_title">PDF Registers &amp; Documents</string>
+    <string name="pdf_docs_subtitle">Download print-ready A4 PDF documents generated directly from the latest directory register.</string>
+    <string name="pdf_download_button">Download PDF</string>
+    <string name="pdf_generating_label">Generating…</string>
+    <string name="pdf_open_cd">Open PDF Document</string>
+    <string name="pdf_share_cd">Share PDF Document</string>
+    <string name="pdf_add_button">Add PDF</string>
+    <string name="pdf_delete_cd">Delete PDF Document</string>
+    <string name="pdf_restore_defaults">Restore Defaults</string>
 </resources>
